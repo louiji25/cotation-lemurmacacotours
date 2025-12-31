@@ -8,7 +8,7 @@ import base64
 # =========================
 # CONFIGURATION
 # =========================
-st.set_page_config(page_title="Laka Am'lay POS", layout="centered")
+st.set_page_config(page_title="Lemur Macaco Tours COTATION", layout="centered")
 
 st.markdown("""
     <style>
@@ -227,3 +227,4 @@ with tab3:
     st.divider()
     df_r = get_rib(); new_r = st.data_editor(df_r, num_rows="dynamic")
     if st.button("Sauver RIB"): new_r.to_csv(RIB_FILE, index=False, encoding='utf-8-sig')
+
