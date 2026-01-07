@@ -3,12 +3,16 @@ import pandas as pd
 import os
 from fpdf import FPDF
 from datetime import datetime
+from streamlit_gsheets import GSheetsConnection
 
 # =========================
-# CONFIGURATION & TAUX
+# CONFIGURATION & CONNEXION
 # =========================
 st.set_page_config(page_title="LEMUR MACACO TOURS - COTATION", layout="wide")
 TAUX_AR_TO_EUR = 5000 
+
+# Connexion Google Sheets
+conn = st.connection("gsheets", type=GSheetsConnection)
 
 # --- STYLE CSS ---
 st.markdown("""
@@ -20,17 +24,16 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# Fichiers de données
-HIST_DEVIS = "historique_devis.csv"
-HIST_FACTURES = "historique_factures.csv"
 DATA_FILE = "data.csv"
 LOGO_FILE = "logo.png"
 
-# --- INITIALISATION DES FICHIERS ---
-COLONNES = ["Date", "Ref", "Client", "Circuit", "Formule", "Pax", "Total", "Options"]
-for f in [HIST_DEVIS, HIST_FACTURES]:
-    if not os.path.exists(f):
-        pd.DataFrame(columns=COLONNES).to_csv(f, index=False, encoding='utf-8-sig')
+# --- FONCTIONS DE SAUVEGARDE CLOUD ---
+def save_to_gsheets(new_row, worksheet_name):
+    """Ajoute une ligne à la Google Sheet et rafraîchit la connexion"""
+    existing_data = conn.read(worksheet=worksheet_name, ttl=0)
+    updated_df = pd.concat([existing_data, new_row], ignore_index=True)
+    conn.update(worksheet=worksheet_name, data=updated_df)
+    st.cache_data.clear() # Force Streamlit à relire les données
 
 # --- FONCTIONS UTILES ---
 def clean_text(text):
@@ -49,7 +52,6 @@ def reset_form():
 
 # --- GÉNÉRATION DU TICKET PDF ---
 def generate_thermal_ticket(type_doc, data, client_name, ref, options_txt):
-    # Augmentation de la hauteur pour inclure les banques (80x300)
     pdf = FPDF(format=(80, 300))
     pdf.add_page()
     pdf.set_margins(4, 4, 4)
@@ -89,7 +91,6 @@ def generate_thermal_ticket(type_doc, data, client_name, ref, options_txt):
     pdf.set_text_color(230, 74, 25)
     pdf.cell(72, 6, f"Soit: {data['Total'] * TAUX_AR_TO_EUR:,.0f} Ar", ln=True, align='R')
     
-    # --- SECTION BANCAIRE ---
     pdf.set_text_color(0, 0, 0)
     pdf.ln(4); pdf.cell(72, 0, "-"*45, ln=True, align='C'); pdf.ln(2)
     pdf.set_font("Helvetica", 'B', 8)
@@ -97,8 +98,7 @@ def generate_thermal_ticket(type_doc, data, client_name, ref, options_txt):
     pdf.set_font("Helvetica", 'B', 7)
     pdf.cell(72, 4, "BANQUE BMOI MADAGASCAR", ln=True, align='L')
     pdf.set_font("Helvetica", '', 6.5)
-    pdf.multi_cell(72, 3.5, "IBAN: MG46 0000 0000 0000 0000 0000 00\nBIC: BMOIMGMG", align='L')
-    # Vous pouvez copier-coller les 3 blocs ci-dessus pour ajouter 2 autres banques
+    pdf.multi_cell(72, 3.5, "IBAN: MG46 0000 8005 8005 0030 2127 424\nBIC: BFAVMGMG", align='L')
     
     pdf.ln(4); pdf.set_font("Helvetica", 'I', 8)
     pdf.cell(72, 5, "Merci de votre confiance!", ln=True, align='C')
@@ -130,7 +130,6 @@ with tab1:
             f1, f2 = st.columns(2)
             formule = f1.selectbox("💎 Formule", sorted(df_f["Formule"].unique().tolist()))
             transport = f2.selectbox("🚗 Transport", sorted(df_f[df_f["Formule"] == formule]["Transport"].unique().tolist()))
-            
             circuit = st.selectbox("📍 Circuit", sorted(df_f[(df_f["Formule"] == formule) & (df_f["Transport"] == transport)]["Circuit"].unique().tolist()))
             
             row = df_f[df_f["Circuit"] == circuit].iloc[0]
@@ -173,7 +172,8 @@ with tab1:
 
             if st.button("🔥 GÉNÉRER LE DEVIS"):
                 if nom_c:
-                    df_h = pd.read_csv(HIST_DEVIS)
+                    # Lecture de l'historique sur Google Sheets pour la Ref
+                    df_h = conn.read(worksheet="devis", ttl=0)
                     ref = f"D{len(df_h)+1:04d}-{nom_c.upper()}"
                     all_opts = f"Transp: {transport}, " + ", ".join(opts_list)
                     
@@ -183,7 +183,8 @@ with tab1:
                         "Formule": formule, "Pax": nb_pax, 
                         "Total": round(total_eur, 2), "Options": all_opts
                     }])
-                    pd.concat([df_h, new_data]).to_csv(HIST_DEVIS, index=False, encoding='utf-8-sig')
+                    
+                    save_to_gsheets(new_data, "devis")
                     
                     pdf_bytes = generate_thermal_ticket("Devis", {"Circuit": circuit, "Pax": nb_pax, "Jours": nb_jours, "Total": total_eur}, nom_c, ref, all_opts)
                     st.download_button("📥 Télécharger", pdf_bytes, f"{ref}.pdf", "application/pdf")
@@ -191,7 +192,7 @@ with tab1:
 
 with tab2:
     st.subheader("🧾 Conversion Devis -> Facture")
-    df_devis = pd.read_csv(HIST_DEVIS)
+    df_devis = conn.read(worksheet="devis", ttl=0)
     if not df_devis.empty:
         choix_ref = st.selectbox("Sélectionner Devis", [""] + df_devis["Ref"].tolist()[::-1])
         if choix_ref:
@@ -199,24 +200,22 @@ with tab2:
             st.info(f"Devis: {choix_ref} | Client: {d_info['Client']} | Total: {d_info['Total']} €")
             
             if st.button("✅ GÉNÉRER FACTURE"):
-                df_f = pd.read_csv(HIST_FACTURES)
                 ref_f = choix_ref.replace("D", "F")
-                
                 new_f = pd.DataFrame([d_info])
                 new_f["Ref"] = ref_f
                 new_f["Date"] = datetime.now().strftime("%d/%m/%Y")
-                pd.concat([df_f, new_f]).to_csv(HIST_FACTURES, index=False, encoding='utf-8-sig')
+                
+                save_to_gsheets(new_f, "factures")
                 
                 pdf_f = generate_thermal_ticket("Facture", {"Circuit": d_info['Circuit'], "Pax": d_info['Pax'], "Jours": "-", "Total": d_info['Total']}, d_info['Client'], ref_f, d_info['Options'])
                 st.download_button("📥 Télécharger Facture", pdf_f, f"{ref_f}.pdf", "application/pdf")
 
 with tab3:
-    st.subheader("📂 Historiques Détaillés")
+    st.subheader("📂 Historiques (Google Sheets)")
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("### 📒 Devis")
-        st.dataframe(pd.read_csv(HIST_DEVIS), use_container_width=True)
+        st.dataframe(conn.read(worksheet="devis", ttl=0), use_container_width=True)
     with c2:
         st.markdown("### 📗 Factures")
-        st.dataframe(pd.read_csv(HIST_FACTURES), use_container_width=True)
-
+        st.dataframe(conn.read(worksheet="factures", ttl=0), use_container_width=True)
