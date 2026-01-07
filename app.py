@@ -27,7 +27,6 @@ DATA_FILE = "data.csv"
 LOGO_FILE = "logo.png"
 
 # --- INITIALISATION DES FICHIERS ---
-# Ajout des colonnes Pax et Formule demandées
 COLONNES = ["Date", "Ref", "Client", "Circuit", "Formule", "Pax", "Total", "Options"]
 for f in [HIST_DEVIS, HIST_FACTURES]:
     if not os.path.exists(f):
@@ -50,7 +49,8 @@ def reset_form():
 
 # --- GÉNÉRATION DU TICKET PDF ---
 def generate_thermal_ticket(type_doc, data, client_name, ref, options_txt):
-    pdf = FPDF(format=(80, 280))
+    # Augmentation de la hauteur pour inclure les banques (80x300)
+    pdf = FPDF(format=(80, 300))
     pdf.add_page()
     pdf.set_margins(4, 4, 4)
     
@@ -89,7 +89,18 @@ def generate_thermal_ticket(type_doc, data, client_name, ref, options_txt):
     pdf.set_text_color(230, 74, 25)
     pdf.cell(72, 6, f"Soit: {data['Total'] * TAUX_AR_TO_EUR:,.0f} Ar", ln=True, align='R')
     
-    pdf.set_text_color(0, 0, 0); pdf.ln(5); pdf.set_font("Helvetica", 'I', 8)
+    # --- SECTION BANCAIRE ---
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(4); pdf.cell(72, 0, "-"*45, ln=True, align='C'); pdf.ln(2)
+    pdf.set_font("Helvetica", 'B', 8)
+    pdf.cell(72, 4, "COORDONNEES BANCAIRES :", ln=True, align='L')
+    pdf.set_font("Helvetica", 'B', 7)
+    pdf.cell(72, 4, "BANQUE BNI MADAGASCAR", ln=True, align='L')
+    pdf.set_font("Helvetica", '', 6.5)
+    pdf.multi_cell(72, 3.5, "IBAN: MG46 0000 8005 8005 0030 2127 424\nBIC: BFAVMGMG", align='L')
+    # Vous pouvez copier-coller les 3 blocs ci-dessus pour ajouter 2 autres banques
+    
+    pdf.ln(4); pdf.set_font("Helvetica", 'I', 8)
     pdf.cell(72, 5, "Merci de votre confiance!", ln=True, align='C')
     
     return bytes(pdf.output())
@@ -132,34 +143,17 @@ with tab1:
             col_o1, col_o2, col_o3 = st.columns(3)
             with col_o1:
                 st.markdown("**🏞️ SITES**")
-                sites = {
-                    "Montagne d'Ambre": 55000, 
-                    "Tsingy Rouge": 35000, 
-                    "Ankarana": 65000, 
-                    "Trois Baies": 10000, 
-                    "Montagne des Français": 30000, 
-                    "Daraina": 60000,
-                    "Marojejy": 140000
-                }
+                sites = {"Montagne d'Ambre": 55000, "Tsingy Rouge": 35000, "Ankarana": 65000, "Trois Baies": 10000, "Montagne des Français": 30000, "Daraina": 60000, "Marojejy": 140000}
                 for s, p in sites.items():
                     if st.checkbox(s): supp_ar += p; opts_list.append(s)
             with col_o2:
                 st.markdown("**👥 PERSONNEL**")
-                persos = {
-                    "Guide": 100000, 
-                    "Cuisinier": 30000, 
-                    "Porteur": 20000
-                }
+                persos = {"Guide": 100000, "Cuisinier": 30000, "Porteur": 20000}
                 for s, p in persos.items():
                     if st.checkbox(s): supp_ar += (p * nb_jours); opts_list.append(f"{s}({nb_jours}j)")
             with col_o3:
                 st.markdown("**🚚 LOGISTIQUE**")
-                logis = { 
-                    "Location voiture": 300000, 
-                    "Carburant": 1200000, 
-                    "Transfert hotel": 200000, 
-                    "Ankify -> Nosy Be": 500000
-                }
+                logis = {"Location voiture": 300000, "Carburant": 1200000, "Transfert hotel": 200000, "Ankify -> Nosy Be": 500000}
                 for l, v in logis.items():
                     if st.checkbox(l): 
                         supp_ar += (v * nb_jours) if "Location" in l else v
@@ -225,9 +219,3 @@ with tab3:
     with c2:
         st.markdown("### 📗 Factures")
         st.dataframe(pd.read_csv(HIST_FACTURES), use_container_width=True)
-
-
-
-
-
-
