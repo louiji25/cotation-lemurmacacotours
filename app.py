@@ -5,197 +5,252 @@ from fpdf import FPDF
 from datetime import datetime
 
 # =========================
-# CONFIGURATION & TAUX
+# CONFIGURATION
 # =========================
 st.set_page_config(page_title="Laka Am'lay POS", layout="centered")
-TAUX_AR_TO_EUR = 5000 
 
-st.markdown("""
-    <style>
-    .stButton>button { width: 100%; height: 3.5em; font-size: 16px !important; border-radius: 10px; margin-top: 10px; }
-    .resume-box { background-color: #ffffff; padding: 20px; border-radius: 10px; border: 1px solid #e0e0e0; box-shadow: 2px 2px 10px rgba(0,0,0,0.05); margin-bottom: 20px; }
-    .total-container { background-color: #1e88e5; color: white; padding: 15px; border-radius: 10px; text-align: center; font-size: 22px; font-weight: bold; margin: 10px 0; }
-    .cat-title { color: #1e88e5; font-weight: bold; margin-top: 10px; border-bottom: 1px solid #eee; font-size: 14px; }
-    </style>
-    """, unsafe_allow_html=True)
-
-HIST_FILE = "historique_devis.csv"
+TAUX_AR_TO_EUR = 5000
 DATA_FILE = "data.csv"
+HIST_FILE = "historique_devis.csv"
 LOGO_FILE = "logo.png"
 
-# --- INITIALISATION ---
-if 'df_h' not in st.session_state:
-    st.session_state.df_h = pd.read_csv(HIST_FILE) if os.path.exists(HIST_FILE) else pd.DataFrame(columns=["Date", "Ref", "Client", "Total"])
+# =========================
+# INITIALISATION
+# =========================
+if "df_h" not in st.session_state:
+    st.session_state.df_h = (
+        pd.read_csv(HIST_FILE)
+        if os.path.exists(HIST_FILE)
+        else pd.DataFrame(columns=["Date", "Ref", "Client", "Total"])
+    )
 
+# =========================
+# UTILITAIRES
+# =========================
 def clean_text(text):
-    if not isinstance(text, str): return str(text)
-    replacements = {'é': 'e', 'è': 'e', 'ê': 'e', 'à': 'a', 'â': 'a', 'î': 'i', 'ï': 'i', 'ô': 'o', 'û': 'u', 'ù': 'u', '’': "'"}
-    for old, new in replacements.items(): text = text.replace(old, new)
+    if not isinstance(text, str):
+        return str(text)
+    repl = {
+        "é": "e", "è": "e", "ê": "e",
+        "à": "a", "â": "a",
+        "î": "i", "ï": "i",
+        "ô": "o",
+        "ù": "u", "û": "u",
+        "’": "'"
+    }
+    for k, v in repl.items():
+        text = text.replace(k, v)
     return text
 
-# --- GÉNÉRATION PDF ---
+def get_info_df():
+    return pd.DataFrame({
+        "Champ": ["Agence", "Adresse", "Téléphone"],
+        "Valeur": ["Laka Am'lay", "Antsiranana – Madagascar", "+261 34 00 000 00"]
+    })
+
+# =========================
+# PDF THERMIQUE
+# =========================
 def generate_thermal_ticket(type_doc, data, client_name, ref, contact="", options_text=""):
     pdf = FPDF(format=(80, 270))
     pdf.add_page()
     pdf.set_margins(4, 4, 4)
-    
+
     if os.path.exists(LOGO_FILE):
-        pdf.image(LOGO_FILE, x=25, y=10, w=30)
-        pdf.ln(35)
-    
-    # Infos Agence (Centrées)
-    df_infos = get_info_df()
-    pdf.set_font("Helvetica", 'B', 12)
-    pdf.cell(72, 8, clean_text(str(df_infos.iloc[0]['Valeur'])), ln=True, align='C')
-    pdf.set_font("Helvetica", '', 8)
-    for i in range(1, len(df_infos)):
-        pdf.cell(72, 4, clean_text(f"{df_infos.iloc[i]['Champ']}: {df_infos.iloc[i]['Valeur']}"), ln=True, align='C')
-    
+        pdf.image(LOGO_FILE, x=25, y=6, w=30)
+        pdf.ln(28)
+
+    infos = get_info_df()
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(72, 7, clean_text(infos.iloc[0]["Valeur"]), ln=True, align="C")
+
+    pdf.set_font("Helvetica", "", 8)
+    for i in range(1, len(infos)):
+        pdf.cell(72, 4, clean_text(f"{infos.iloc[i]['Champ']} : {infos.iloc[i]['Valeur']}"), ln=True, align="C")
+
     pdf.ln(2)
-    pdf.cell(72, 0, "-"*45, ln=True, align='C')
+    pdf.cell(72, 0, "-" * 45, ln=True)
     pdf.ln(2)
-    
-    # Titre Document (Centré)
-    pdf.set_font("Helvetica", 'B', 10)
-    pdf.cell(72, 6, clean_text(type_doc.upper()), ln=True, align='C')
-    
-    # Infos Client (Alignées à gauche)
-    pdf.set_font("Helvetica", '', 8)
-    pdf.set_x(4) # Force le retour à gauche
-    pdf.cell(72, 5, f"Date: {datetime.now().strftime('%d/%m/%y %H:%M')}", ln=True, align='L')
-    pdf.set_x(4)
-    pdf.cell(72, 5, f"Ref: {clean_text(ref)}", ln=True, align='L')
-    pdf.set_x(4)
-    pdf.cell(72, 5, f"Client: {clean_text(client_name)}", ln=True, align='L')
-    
+
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(72, 6, type_doc.upper(), ln=True, align="C")
+
+    pdf.set_font("Helvetica", "", 8)
+    pdf.cell(72, 5, f"Date : {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True)
+    pdf.cell(72, 5, f"Ref : {clean_text(ref)}", ln=True)
+    pdf.cell(72, 5, f"Client : {clean_text(client_name)}", ln=True)
+    if contact:
+        pdf.cell(72, 5, f"Contact : {clean_text(contact)}", ln=True)
+
     pdf.ln(2)
-    pdf.cell(72, 0, "-"*45, ln=True, align='C')
+    pdf.cell(72, 0, "-" * 45, ln=True)
     pdf.ln(2)
-    
-    # Détails Circuit (Alignés à gauche)
-    pdf.set_font("Helvetica", 'B', 9)
-    pdf.set_x(4)
-    pdf.multi_cell(72, 5, clean_text(f"Circuit: {data.get('Circuit', 'N/A')}"), align='L')
-    
-    # LIGNE PAX CORRIGÉE
-    pdf.set_font("Helvetica", '', 8)
-    pdf.set_x(4) # Assure que Pax commence bien à gauche
-    pdf.cell(72, 5, f"Pax: {data.get('Pax', 1)} | Jours: {data.get('Jours', 1)}", ln=True, align='L')
-    
-    # Options (Italique gauche)
+
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.multi_cell(72, 5, f"Circuit : {clean_text(data['Circuit'])}")
+
+    pdf.set_font("Helvetica", "", 8)
+    pdf.cell(72, 5, f"Pax : {data['Pax']} | Jours : {data['Jours']}", ln=True)
+
     if options_text:
-        pdf.set_x(4)
-        pdf.set_font("Helvetica", 'I', 7)
-        pdf.multi_cell(72, 4, clean_text(f"Options: {options_text}"), align='L')
-    
-    # Totaux (Alignés à droite)
+        pdf.set_font("Helvetica", "I", 7)
+        pdf.multi_cell(72, 4, clean_text(f"Options : {options_text}"))
+
     pdf.ln(2)
-    pdf.set_font("Helvetica", 'B', 11)
-    total_eur = float(data.get('Total', 0))
-    pdf.cell(72, 8, f"TOTAL: {total_eur:,.2f} EUR", ln=True, align='R')
-    pdf.set_text_color(230, 74, 25)
-    pdf.cell(72, 6, f"Soit: {total_eur * TAUX_AR_TO_EUR:,.0f} Ar", ln=True, align='R')
-    
-    # Pied de page
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(72, 7, f"TOTAL : {data['Total']:,.2f} EUR", ln=True, align="R")
+
+    pdf.set_text_color(220, 50, 50)
+    pdf.cell(72, 6, f"Soit : {data['Total'] * TAUX_AR_TO_EUR:,.0f} Ar", ln=True, align="R")
+
     pdf.set_text_color(0, 0, 0)
-    pdf.ln(5)
-    pdf.set_font("Helvetica", 'I', 8)
-    pdf.cell(72, 5, "Merci de votre confiance !", ln=True, align='C')
-    
-    # Gestion du retour selon la version de FPDF2
+    pdf.ln(4)
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.cell(72, 5, "Merci de votre confiance !", ln=True, align="C")
+
     output = pdf.output()
-    if isinstance(output, str):
-        return output.encode('latin-1', 'replace')
-    return bytes(output)
+    return output.encode("latin-1", "replace") if isinstance(output, str) else bytes(output)
 
 # =========================
 # INTERFACE
 # =========================
-if os.path.exists(DATA_FILE):
-    df_excu = pd.read_csv(DATA_FILE)
-    df_excu['Prix'] = pd.to_numeric(df_excu['Prix'], errors='coerce').fillna(0) # Correction du "nan"
+st.title("📝 Nouveau Devis")
 
-    st.title("📝 Nouveau Devis")
-    c1, c2 = st.columns(2)
-    nom_c = c1.text_input("👤 Nom du Client")
-    cont_c = c2.text_input("📱 Contact")
-    
-    type_e = st.selectbox("🌍 Type", [""] + sorted(df_excu["Type"].unique().tolist()))
-    
-    if type_e:
-        df_f = df_excu[df_excu["Type"] == type_e]
-        f1, f2 = st.columns(2)
-        formule = f1.selectbox("💎 Formule", sorted(df_f["Formule"].unique().tolist()))
-        transport = f2.selectbox("🚗 Transport", sorted(df_f[df_f["Formule"] == formule]["Transport"].unique().tolist()))
-        
-        circuit = st.selectbox("📍 Circuit", sorted(df_f[(df_f["Formule"] == formule) & (df_f["Transport"] == transport)]["Circuit"].unique().tolist()))
-        
-        row = df_f[df_f["Circuit"] == circuit].iloc[0]
-        prix_base = float(row['Prix'])
-        
-        p1, p2 = st.columns(2)
-        nb_pax = p1.number_input("👥 Pax", min_value=1, value=2) # Valeur par défaut 
-        nb_jours = p2.number_input("📅 Jours", min_value=1, value=3) # Valeur par défaut 
-        
-        # --- LISTE COMPLÈTE DES OPTIONS ---
-        supp_ar = 0.0
-        opt_sites, opt_perso, opt_logis = [], [], []
+if not os.path.exists(DATA_FILE):
+    st.error("data.csv manquant")
+    st.stop()
 
-        st.write("### 🛠️ Personnalisation du Devis")
-        col_opt1, col_opt2, col_opt3 = st.columns(3)
-        
-        with col_opt1:
-            st.markdown("**🏞️ SITES (Entrées)**")
-            sites = {"Montagne des Français": 30000, "Trois Baies": 10000, "Montagne d'Ambre": 55000, "Tsingy Rouge": 35000, "Ankarana": 65000, "Daraina": 60000}
-            for s, p in sites.items():
-                if st.checkbox(s): supp_ar += p; opt_sites.append(s)
+df = pd.read_csv(DATA_FILE)
+df["Prix"] = pd.to_numeric(df["Prix"], errors="coerce").fillna(0)
 
-        with col_opt2:
-            st.markdown("**👥 PERSONNEL**")
-            persos = {"Guide": 100000, "Cuisinier": 30000, "Porteur": 20000}
-            for p, v in persos.items():
-                if st.checkbox(p): supp_ar += (v * nb_jours); opt_perso.append(f"{p} ({nb_jours}j)")
+required_cols = {"Type", "Formule", "Transport", "Circuit", "Prix"}
+if not required_cols.issubset(df.columns):
+    st.error("Colonnes manquantes dans data.csv")
+    st.stop()
 
-        with col_opt3:
-            st.markdown("**🚚 LOGISTIQUE**")
-            logis = {"Location voiture": 300000, "Carburant": 1200000, "Transfert hôtel": 200000, "Ankify -> Nosy Be": 500000}
-            for l, v in logis.items():
-                if st.checkbox(l): 
-                    supp_ar += (v * nb_jours) if "Location" in l else v
-                    opt_logis.append(l)
+c1, c2 = st.columns(2)
+nom_c = c1.text_input("👤 Nom du client")
+contact_c = c2.text_input("📞 Contact")
 
-        marge = st.slider("📈 Marge %", 0, 100, 20)
-        total_eur = ((prix_base + (supp_ar/TAUX_AR_TO_EUR)) * nb_pax) * (1 + marge/100)
-        total_ar = total_eur * TAUX_AR_TO_EUR
+type_e = st.selectbox("🌍 Type", [""] + sorted(df["Type"].unique()))
 
-        # --- RÉSUMÉ VISUEL ---
-        st.markdown(f"""
-            <div class="resume-box">
-                <b>Client :</b> {nom_c} | <b>Circuit :</b> {circuit}<br>
-                <div class="cat-title">SITES</div> <small>{', '.join(opt_sites) if opt_sites else 'Base'}</small>
-                <div class="cat-title">PERSONNEL</div> <small>{', '.join(opt_perso) if opt_perso else 'Base'}</small>
-                <div class="cat-title">LOGISTIQUE</div> <small>{', '.join(opt_logis) if opt_logis else 'Base'}</small>
-                <hr>
-                <div class="total-container">
-                    {total_eur:,.2f} € / {total_ar:,.0f} Ar
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
+if type_e:
+    df_t = df[df["Type"] == type_e]
 
-        if st.button("✅ VALIDER ET TÉLÉCHARGER LE TICKET"):
-            if not nom_c: st.error("Nom du client requis")
-            else:
-                ref_d = f"D{len(st.session_state.df_h)+1:06d}-{nom_c.upper()}" # [cite: 6]
-                opts_txt = f"Transp: {transport}, " + ", ".join(opt_sites + opt_perso + opt_logis)
-                
-                data_final = {"Circuit": circuit, "Pax": nb_pax, "Jours": nb_jours, "Total": total_eur}
-                pdf_bytes = generate_thermal_ticket("Devis", data_final, nom_c, ref_d, opts_txt)
-                
-                st.download_button(label="📥 Cliquer ici pour télécharger le Ticket", 
-                                   data=pdf_bytes, 
-                                   file_name=f"{ref_d}.pdf", 
-                                   mime="application/pdf")
-else:
-    st.error("data.csv manquant.")
+    f1, f2 = st.columns(2)
+    formule = f1.selectbox("💎 Formule", sorted(df_t["Formule"].unique()))
+    transport = f2.selectbox(
+        "🚗 Transport",
+        sorted(df_t[df_t["Formule"] == formule]["Transport"].unique())
+    )
 
+    circuit = st.selectbox(
+        "📍 Circuit",
+        sorted(
+            df_t[
+                (df_t["Formule"] == formule) &
+                (df_t["Transport"] == transport)
+            ]["Circuit"].unique()
+        )
+    )
 
+    row = df_t[
+        (df_t["Formule"] == formule) &
+        (df_t["Transport"] == transport) &
+        (df_t["Circuit"] == circuit)
+    ].iloc[0]
+
+    prix_base = float(row["Prix"])
+
+    p1, p2 = st.columns(2)
+    nb_pax = p1.number_input("👥 Pax", min_value=1, value=2)
+    nb_jours = p2.number_input("📅 Jours", min_value=1, value=3)
+
+    supp_ar = 0
+    opt_sites, opt_perso, opt_logis = [], [], []
+
+    st.subheader("🛠️ Options")
+
+    col1, col2, col3 = st.columns(3)
+
+    # SITES (PAR PAX)
+    with col1:
+        st.markdown("**🏞️ Sites (par pax)**")
+        sites = {
+            "Montagne d'Ambre": 55000,
+            "Tsingy Rouge": 35000,
+            "Ankarana": 65000
+        }
+        for s, v in sites.items():
+            if st.checkbox(s):
+                supp_ar += v * nb_pax
+                opt_sites.append(f"{s} ({nb_pax} pax)")
+
+    # PERSONNEL (PAR JOUR)
+    with col2:
+        st.markdown("**👥 Personnel (par jour)**")
+        persos = {"Guide": 100000, "Cuisinier": 30000}
+        for p, v in persos.items():
+            if st.checkbox(p):
+                supp_ar += v * nb_jours
+                opt_perso.append(f"{p} ({nb_jours}j)")
+
+    # LOGISTIQUE
+    with col3:
+        st.markdown("**🚚 Logistique**")
+        logis = {
+            "Location voiture": ("jour", 300000),
+            "Carburant": ("forfait", 1200000),
+            "Transfert hôtel": ("forfait", 200000)
+        }
+        for l, (t, v) in logis.items():
+            if st.checkbox(l):
+                supp_ar += v * nb_jours if t == "jour" else v
+                opt_logis.append(l)
+
+    marge = st.slider("📈 Marge (%)", 0, 100, 20)
+
+    supp_eur = supp_ar / TAUX_AR_TO_EUR
+    sous_total = (prix_base + supp_eur) * nb_pax
+    total_eur = sous_total * (1 + marge / 100)
+
+    st.markdown(f"### 💰 **Total : {total_eur:,.2f} € / {total_eur * TAUX_AR_TO_EUR:,.0f} Ar**")
+
+    if st.button("✅ Valider et télécharger"):
+        if not nom_c:
+            st.error("Nom du client requis")
+        else:
+            safe_name = clean_text(nom_c).replace(" ", "_").upper()
+            ref = f"D{len(st.session_state.df_h)+1:06d}-{safe_name}"
+
+            options_txt = ", ".join(opt_sites + opt_perso + opt_logis)
+
+            data_final = {
+                "Circuit": circuit,
+                "Pax": nb_pax,
+                "Jours": nb_jours,
+                "Total": total_eur
+            }
+
+            pdf = generate_thermal_ticket(
+                "Devis", data_final, nom_c, ref, contact_c, options_txt
+            )
+
+            st.download_button(
+                "📥 Télécharger le ticket",
+                data=pdf,
+                file_name=f"{ref}.pdf",
+                mime="application/pdf"
+            )
+
+            new_row = {
+                "Date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "Ref": ref,
+                "Client": nom_c,
+                "Total": total_eur
+            }
+            st.session_state.df_h = pd.concat(
+                [st.session_state.df_h, pd.DataFrame([new_row])],
+                ignore_index=True
+            )
+            st.session_state.df_h.to_csv(HIST_FILE, index=False)
