@@ -61,9 +61,9 @@ def generate_thermal_ticket(type_doc, data, client_name, ref, options_txt):
     pdf.set_font("Helvetica", 'B', 11)
     pdf.cell(72, 5, "LEMUR MACACO TOURS", ln=True, align='C')
     pdf.set_font("Helvetica", '', 7)
-    pdf.cell(72, 4, "Nosy Be - Madagascar", ln=True, align='C')
+    pdf.cell(72, 4, "Andrekareka - Hell Ville - Nosy Be - Madagascar", ln=True, align='C')
     pdf.cell(72, 4, "Contact: +261 32 26 393 88 / 34 29 010 65", ln=True, align='C')
-    pdf.cell(72, 4, "NIF: 123456789 | STAT: 98765", ln=True, align='C')
+    pdf.cell(72, 4, "NIF: 4019433197 | STAT: 79120 71 2025 0 10965", ln=True, align='C')
     pdf.ln(2); pdf.cell(72, 0, "-"*45, ln=True, align='C'); pdf.ln(2)
     
     pdf.set_font("Helvetica", 'B', 10)
@@ -225,6 +225,7 @@ with tab3:
     with c2:
         st.markdown("### 📗 Factures")
         st.dataframe(pd.read_csv(HIST_FACTURES), use_container_width=True)
+
 
 
 
