@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import requests
 from fpdf import FPDF
 from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
@@ -31,24 +32,36 @@ DATA_FILE = "data.csv"
 LOGO_FILE = "logo.png"
 
 # --- FONCTIONS DE CACHE & SAUVEGARDE ---
-@st.cache_data(ttl=600)  # Garde les données en mémoire 10 min pour la vitesse
+@st.cache_data(ttl=600)  
 def get_cached_data(worksheet_name):
+    """Lit les données avec un cache de 10 minutes"""
     try:
-        return conn.read(worksheet=worksheet_name, ttl=0)
-    except:
+        df = conn.read(worksheet=worksheet_name, ttl=0)
+        if df.empty:
+            return pd.DataFrame(columns=COLONNES)
+        return df
+    except Exception:
         return pd.DataFrame(columns=COLONNES)
 
 def save_to_gsheets(new_row, worksheet_name):
-    """Ajoute une ligne et force la mise à jour du cache"""
+    """Sauvegarde sécurisée vers Google Sheets (Nécessite Service Account)"""
     try:
-        # On lit la version en ligne sans cache pour ne pas écraser de données
-        existing_data = conn.read(worksheet=worksheet_name, ttl=0)
-    except:
-        existing_data = pd.DataFrame(columns=COLONNES)
-    
-    updated_df = pd.concat([existing_data, new_row], ignore_index=True)
-    conn.update(worksheet=worksheet_name, data=updated_df)
-    st.cache_data.clear() # On vide le cache pour forcer l'actualisation
+        # Lecture de la version réelle (sans cache) pour concaténation
+        try:
+            existing_data = conn.read(worksheet=worksheet_name, ttl=0)
+        except Exception:
+            existing_data = pd.DataFrame(columns=COLONNES)
+        
+        # Nettoyage des données existantes pour éviter les conflits de types
+        updated_df = pd.concat([existing_data, new_row], ignore_index=True)
+        
+        # Mise à jour vers Google Sheets
+        conn.update(worksheet=worksheet_name, data=updated_df)
+        st.cache_data.clear() # Force le rafraîchissement
+        return True
+    except Exception as e:
+        st.error(f"Erreur lors de la sauvegarde : {e}")
+        return False
 
 # --- FONCTIONS UTILES ---
 def clean_text(text):
@@ -196,9 +209,9 @@ with tab1:
                         "Total": round(total_eur, 2), "Options": all_opts
                     }])
                     
-                    save_to_gsheets(new_data, "devis")
-                    pdf_bytes = generate_thermal_ticket("Devis", {"Circuit": circuit, "Pax": nb_pax, "Jours": nb_jours, "Total": total_eur}, nom_c, ref, all_opts)
-                    st.download_button("📥 Télécharger PDF", pdf_bytes, f"{ref}.pdf", "application/pdf")
+                    if save_to_gsheets(new_data, "devis"):
+                        pdf_bytes = generate_thermal_ticket("Devis", {"Circuit": circuit, "Pax": nb_pax, "Jours": nb_jours, "Total": total_eur}, nom_c, ref, all_opts)
+                        st.download_button("📥 Télécharger PDF", pdf_bytes, f"{ref}.pdf", "application/pdf")
                 else: st.error("Nom du client requis.")
 
 with tab2:
@@ -212,13 +225,14 @@ with tab2:
             
             if st.button("✅ GÉNÉRER FACTURE"):
                 ref_f = choix_ref.replace("D", "F")
+                # Création d'une copie propre pour la facture
                 new_f = pd.DataFrame([d_info])
                 new_f["Ref"] = ref_f
                 new_f["Date"] = datetime.now().strftime("%d/%m/%Y")
                 
-                save_to_gsheets(new_f, "factures")
-                pdf_f = generate_thermal_ticket("Facture", {"Circuit": d_info['Circuit'], "Pax": d_info['Pax'], "Jours": "-", "Total": d_info['Total']}, d_info['Client'], ref_f, d_info['Options'])
-                st.download_button("📥 Télécharger Facture", pdf_f, f"{ref_f}.pdf", "application/pdf")
+                if save_to_gsheets(new_f, "factures"):
+                    pdf_f = generate_thermal_ticket("Facture", {"Circuit": d_info['Circuit'], "Pax": d_info['Pax'], "Jours": "-", "Total": d_info['Total']}, d_info['Client'], ref_f, d_info['Options'])
+                    st.download_button("📥 Télécharger Facture", pdf_f, f"{ref_f}.pdf", "application/pdf")
     else:
         st.info("Aucun devis trouvé.")
 
