@@ -7,7 +7,7 @@ from datetime import datetime
 # =========================
 # CONFIGURATION & TAUX
 # =========================
-st.set_page_config(page_title="Laka Am'lay POS", layout="wide")
+st.set_page_config(page_title="LEMUR MACACO TOURS - COTATION", layout="wide")
 TAUX_AR_TO_EUR = 5000 
 
 # --- STYLE CSS ---
@@ -225,6 +225,7 @@ with tab3:
     with c2:
         st.markdown("### 📗 Factures")
         st.dataframe(pd.read_csv(HIST_FACTURES), use_container_width=True)
+
 
 
 
