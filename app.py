@@ -95,9 +95,9 @@ def generate_thermal_ticket(type_doc, data, client_name, ref, options_txt):
     pdf.set_font("Helvetica", 'B', 8)
     pdf.cell(72, 4, "COORDONNEES BANCAIRES :", ln=True, align='L')
     pdf.set_font("Helvetica", 'B', 7)
-    pdf.cell(72, 4, "BANQUE BNI MADAGASCAR", ln=True, align='L')
+    pdf.cell(72, 4, "BANQUE BMOI MADAGASCAR", ln=True, align='L')
     pdf.set_font("Helvetica", '', 6.5)
-    pdf.multi_cell(72, 3.5, "IBAN: MG46 0000 8005 8005 0030 2127 424\nBIC: BFAVMGMG", align='L')
+    pdf.multi_cell(72, 3.5, "IBAN: MG46 0000 0000 0000 0000 0000 00\nBIC: BMOIMGMG", align='L')
     # Vous pouvez copier-coller les 3 blocs ci-dessus pour ajouter 2 autres banques
     
     pdf.ln(4); pdf.set_font("Helvetica", 'I', 8)
@@ -219,3 +219,4 @@ with tab3:
     with c2:
         st.markdown("### 📗 Factures")
         st.dataframe(pd.read_csv(HIST_FACTURES), use_container_width=True)
+
