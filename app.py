@@ -138,7 +138,7 @@ with tab1:
                     "Ankarana": 65000, 
                     "Trois Baies": 10000, 
                     "Montagne des Français": 30000, 
-                    "Daraina": 60000
+                    "Daraina": 60000,
                     "Marojejy": 140000
                 }
                 for s, p in sites.items():
@@ -225,5 +225,6 @@ with tab3:
     with c2:
         st.markdown("### 📗 Factures")
         st.dataframe(pd.read_csv(HIST_FACTURES), use_container_width=True)
+
 
 
