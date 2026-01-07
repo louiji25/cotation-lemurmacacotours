@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import os
-import requests
 from fpdf import FPDF
 from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
@@ -34,30 +33,38 @@ LOGO_FILE = "logo.png"
 # --- FONCTIONS DE CACHE & SAUVEGARDE ---
 @st.cache_data(ttl=600)  
 def get_cached_data(worksheet_name):
-    """Lit les données avec un cache de 10 minutes"""
+    """Lit les données avec cache"""
     try:
         df = conn.read(worksheet=worksheet_name, ttl=0)
-        if df.empty:
+        if df is None or df.empty:
             return pd.DataFrame(columns=COLONNES)
-        return df
+        # S'assurer que les colonnes sont dans le bon ordre
+        for col in COLONNES:
+            if col not in df.columns:
+                df[col] = None
+        return df[COLONNES]
     except Exception:
         return pd.DataFrame(columns=COLONNES)
 
 def save_to_gsheets(new_row, worksheet_name):
-    """Sauvegarde sécurisée vers Google Sheets (Nécessite Service Account)"""
+    """Sauvegarde vers Google Sheets"""
     try:
-        # Lecture de la version réelle (sans cache) pour concaténation
+        # Lire les données actuelles sans cache
         try:
             existing_data = conn.read(worksheet=worksheet_name, ttl=0)
+            if existing_data is None: existing_data = pd.DataFrame(columns=COLONNES)
         except Exception:
             existing_data = pd.DataFrame(columns=COLONNES)
         
-        # Nettoyage des données existantes pour éviter les conflits de types
-        updated_df = pd.concat([existing_data, new_row], ignore_index=True)
+        # Concaténation propre pour éviter les FutureWarning
+        if existing_data.empty:
+            updated_df = new_row
+        else:
+            updated_df = pd.concat([existing_data.dropna(how='all', axis=1), new_row], ignore_index=True)
         
         # Mise à jour vers Google Sheets
         conn.update(worksheet=worksheet_name, data=updated_df)
-        st.cache_data.clear() # Force le rafraîchissement
+        st.cache_data.clear() 
         return True
     except Exception as e:
         st.error(f"Erreur lors de la sauvegarde : {e}")
@@ -78,11 +85,11 @@ def reset_form():
             else: st.session_state[key] = ""
     st.rerun()
 
-# --- GÉNÉRATION DU TICKET PDF ---
+# --- GÉNÉRATION DU TICKET PDF (Version fpdf2) ---
 def generate_thermal_ticket(type_doc, data, client_name, ref, options_txt):
-    pdf = FPDF(format=(80, 300))
+    pdf = FPDF(format=(80, 250)) # Hauteur ajustée
     pdf.add_page()
-    pdf.set_margins(4, 4, 4)
+    pdf.set_margin(4)
     
     if os.path.exists(LOGO_FILE):
         pdf.image(LOGO_FILE, x=25, y=8, w=30)
@@ -92,8 +99,6 @@ def generate_thermal_ticket(type_doc, data, client_name, ref, options_txt):
     pdf.cell(72, 5, "LEMUR MACACO TOURS", ln=True, align='C')
     pdf.set_font("Helvetica", '', 7)
     pdf.cell(72, 4, "Andrekareka - Hell Ville - Nosy Be - Madagascar", ln=True, align='C')
-    pdf.cell(72, 4, "Contact: +261 32 26 393 88", ln=True, align='C')
-    pdf.cell(72, 4, "NIF: 4019433197 | STAT: 79120 71 2025 0 10965", ln=True, align='C')
     pdf.ln(2); pdf.cell(72, 0, "-"*45, ln=True, align='C'); pdf.ln(2)
     
     pdf.set_font("Helvetica", 'B', 10)
@@ -120,14 +125,7 @@ def generate_thermal_ticket(type_doc, data, client_name, ref, options_txt):
     pdf.cell(72, 6, f"Soit: {data['Total'] * TAUX_AR_TO_EUR:,.0f} Ar", ln=True, align='R')
     
     pdf.set_text_color(0, 0, 0)
-    pdf.ln(4); pdf.cell(72, 0, "-"*45, ln=True, align='C'); pdf.ln(2)
-    pdf.set_font("Helvetica", 'B', 7)
-    pdf.cell(72, 4, "COORDONNEES BANCAIRES : BMOI", ln=True)
-    pdf.set_font("Helvetica", '', 6)
-    pdf.multi_cell(72, 3, "IBAN: MG46 0000 8005 8005 0030 2127 424\nBIC: BFAVMGMG")
-    
-    pdf.ln(4); pdf.set_font("Helvetica", 'I', 8)
-    pdf.cell(72, 5, "Merci de votre confiance!", ln=True, align='C')
+    pdf.ln(4); pdf.cell(72, 5, "Merci de votre confiance!", ln=True, align='C')
     
     return bytes(pdf.output())
 
@@ -163,26 +161,24 @@ with tab1:
             nb_pax = p1.number_input("👥 Pax", min_value=1, key="pax")
             nb_jours = p2.number_input("📅 Jours", min_value=1, key="jours")
             
+            # Calculs
             supp_ar = 0.0
             opts_list = []
             col_o1, col_o2, col_o3 = st.columns(3)
             with col_o1:
                 st.markdown("**🏞️ SITES**")
-                sites = {"Montagne d'Ambre": 55000, "Tsingy Rouge": 35000, "Ankarana": 65000, "Trois Baies": 10000, "Montagne des Français": 30000}
+                sites = {"Montagne d'Ambre": 55000, "Tsingy Rouge": 35000, "Ankarana": 65000}
                 for s, p in sites.items():
                     if st.checkbox(s): supp_ar += p; opts_list.append(s)
             with col_o2:
-                st.markdown("**👥 PERSONNEL**")
-                persos = {"Guide": 100000, "Cuisinier": 30000, "Porteur": 20000}
+                st.markdown("**👥 PERS.**")
+                persos = {"Guide": 100000, "Cuisinier": 30000}
                 for s, p in persos.items():
                     if st.checkbox(s): supp_ar += (p * nb_jours); opts_list.append(f"{s}({nb_jours}j)")
             with col_o3:
-                st.markdown("**🚚 LOGISTIQUE**")
-                logis = {"Location voiture": 300000, "Carburant": 1200000, "Transfert hotel": 200000}
-                for l, v in logis.items():
-                    if st.checkbox(l): 
-                        supp_ar += (v * nb_jours) if "Location" in l else v
-                        opts_list.append(l)
+                st.markdown("**🚚 LOG.**")
+                if st.checkbox("Location voiture"): 
+                    supp_ar += (300000 * nb_jours); opts_list.append("Loc. Voitur")
 
             marge = st.slider("📈 Marge %", 0, 100, 20)
             total_eur = ((float(row['Prix']) + (supp_ar/TAUX_AR_TO_EUR)) * nb_pax) * (1 + marge/100)
@@ -191,15 +187,13 @@ with tab1:
             st.markdown(f"""
                 <div class="resume-box">
                     <div class="total-container">{total_eur:,.2f} € / {total_ar:,.0f} Ar</div>
-                    <div class="cat-title">RÉSUMÉ</div>
-                    <small><b>Client:</b> {nom_c} | <b>Formule:</b> {formule} | <b>Pax:</b> {nb_pax}</small>
                 </div>
             """, unsafe_allow_html=True)
 
             if st.button("🔥 GÉNÉRER LE DEVIS"):
                 if nom_c:
                     df_h = get_cached_data("devis")
-                    ref = f"D{len(df_h)+1:04d}-{nom_c.upper()}"
+                    ref = f"D{len(df_h)+1:04d}-{nom_c.upper()[:5]}"
                     all_opts = f"Transp: {transport}, " + ", ".join(opts_list)
                     
                     new_data = pd.DataFrame([{
@@ -221,31 +215,20 @@ with tab2:
         choix_ref = st.selectbox("Sélectionner Devis", [""] + df_devis["Ref"].tolist()[::-1])
         if choix_ref:
             d_info = df_devis[df_devis["Ref"] == choix_ref].iloc[0]
-            st.info(f"Devis: {choix_ref} | Client: {d_info['Client']} | Total: {d_info['Total']} €")
-            
             if st.button("✅ GÉNÉRER FACTURE"):
                 ref_f = choix_ref.replace("D", "F")
-                # Création d'une copie propre pour la facture
                 new_f = pd.DataFrame([d_info])
                 new_f["Ref"] = ref_f
                 new_f["Date"] = datetime.now().strftime("%d/%m/%Y")
-                
                 if save_to_gsheets(new_f, "factures"):
                     pdf_f = generate_thermal_ticket("Facture", {"Circuit": d_info['Circuit'], "Pax": d_info['Pax'], "Jours": "-", "Total": d_info['Total']}, d_info['Client'], ref_f, d_info['Options'])
                     st.download_button("📥 Télécharger Facture", pdf_f, f"{ref_f}.pdf", "application/pdf")
-    else:
-        st.info("Aucun devis trouvé.")
+    else: st.info("Aucun devis trouvé.")
 
 with tab3:
     st.subheader("📂 Historiques")
-    if st.button("🔄 Actualiser les données"):
-        st.cache_data.clear()
-        st.rerun()
-        
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("### 📒 Devis")
-        st.dataframe(get_cached_data("devis"), use_container_width=True)
-    with c2:
-        st.markdown("### 📗 Factures")
-        st.dataframe(get_cached_data("factures"), use_container_width=True)
+    if st.button("🔄 Actualiser"): st.rerun()
+    st.markdown("### 📒 Devis")
+    st.dataframe(get_cached_data("devis"), width=1200) # Utilisation de width fixe pour éviter dépréciation
+    st.markdown("### 📗 Factures")
+    st.dataframe(get_cached_data("factures"), width=1200)
