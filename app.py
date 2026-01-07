@@ -139,6 +139,7 @@ with tab1:
                     "Trois Baies": 10000, 
                     "Montagne des Français": 30000, 
                     "Daraina": 60000
+                    "Marojejy": 140000
                 }
                 for s, p in sites.items():
                     if st.checkbox(s): supp_ar += p; opts_list.append(s)
@@ -153,9 +154,8 @@ with tab1:
                     if st.checkbox(s): supp_ar += (p * nb_jours); opts_list.append(f"{s}({nb_jours}j)")
             with col_o3:
                 st.markdown("**🚚 LOGISTIQUE**")
-                logis = {
-                    "Location 4x4": 300000, 
-                    "Location voiture": 250000, 
+                logis = { 
+                    "Location voiture": 300000, 
                     "Carburant": 1200000, 
                     "Transfert hotel": 200000, 
                     "Ankify -> Nosy Be": 500000
@@ -225,4 +225,5 @@ with tab3:
     with c2:
         st.markdown("### 📗 Factures")
         st.dataframe(pd.read_csv(HIST_FACTURES), use_container_width=True)
+
 
