@@ -60,7 +60,7 @@ def generate_thermal_ticket(type_doc, data, client_name, ref, options_txt):
     pdf.set_font("Helvetica", 'B', 9)
     pdf.multi_cell(72, 5, clean_text(f"Circuit: {data['Circuit']}"))
     pdf.set_font("Helvetica", '', 8)
-    pdf.cell(72, 5, f"Pax: {data['Pax']} | Jours: {data['Jours']}", ln=True)
+    pdf.cell(72, 5, f"Pax: {data['Pax']} | Jours: {data['Jours']}", ln=True, align='L')
     pdf.ln(1)
     pdf.set_font("Helvetica", 'I', 7)
     pdf.multi_cell(72, 4, clean_text(f"Options: {options_txt}"))
@@ -165,3 +165,4 @@ if os.path.exists(DATA_FILE):
                                    mime="application/pdf")
 else:
     st.error("data.csv manquant.")
+
