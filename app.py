@@ -14,6 +14,9 @@ TAUX_AR_TO_EUR = 5000
 # Connexion Google Sheets
 conn = st.connection("gsheets", type=GSheetsConnection)
 
+# Colonnes standards
+COLONNES = ["Date", "Ref", "Client", "Circuit", "Formule", "Pax", "Total", "Options"]
+
 # --- STYLE CSS ---
 st.markdown("""
     <style>
@@ -30,10 +33,14 @@ LOGO_FILE = "logo.png"
 # --- FONCTIONS DE SAUVEGARDE CLOUD ---
 def save_to_gsheets(new_row, worksheet_name):
     """Ajoute une ligne à la Google Sheet et rafraîchit la connexion"""
-    existing_data = conn.read(worksheet=worksheet_name, ttl=0)
+    try:
+        existing_data = conn.read(worksheet=worksheet_name, ttl=0)
+    except:
+        existing_data = pd.DataFrame(columns=COLONNES)
+    
     updated_df = pd.concat([existing_data, new_row], ignore_index=True)
     conn.update(worksheet=worksheet_name, data=updated_df)
-    st.cache_data.clear() # Force Streamlit à relire les données
+    st.cache_data.clear() 
 
 # --- FONCTIONS UTILES ---
 def clean_text(text):
@@ -172,8 +179,11 @@ with tab1:
 
             if st.button("🔥 GÉNÉRER LE DEVIS"):
                 if nom_c:
-                    # Lecture de l'historique sur Google Sheets pour la Ref
-                    df_h = conn.read(worksheet="devis", ttl=0)
+                    try:
+                        df_h = conn.read(worksheet="devis", ttl=0)
+                    except:
+                        df_h = pd.DataFrame(columns=COLONNES)
+                        
                     ref = f"D{len(df_h)+1:04d}-{nom_c.upper()}"
                     all_opts = f"Transp: {transport}, " + ", ".join(opts_list)
                     
@@ -187,35 +197,44 @@ with tab1:
                     save_to_gsheets(new_data, "devis")
                     
                     pdf_bytes = generate_thermal_ticket("Devis", {"Circuit": circuit, "Pax": nb_pax, "Jours": nb_jours, "Total": total_eur}, nom_c, ref, all_opts)
-                    st.download_button("📥 Télécharger", pdf_bytes, f"{ref}.pdf", "application/pdf")
+                    st.download_button("📥 Télécharger PDF", pdf_bytes, f"{ref}.pdf", "application/pdf")
                 else: st.error("Nom du client requis.")
 
 with tab2:
     st.subheader("🧾 Conversion Devis -> Facture")
-    df_devis = conn.read(worksheet="devis", ttl=0)
-    if not df_devis.empty:
-        choix_ref = st.selectbox("Sélectionner Devis", [""] + df_devis["Ref"].tolist()[::-1])
-        if choix_ref:
-            d_info = df_devis[df_devis["Ref"] == choix_ref].iloc[0]
-            st.info(f"Devis: {choix_ref} | Client: {d_info['Client']} | Total: {d_info['Total']} €")
-            
-            if st.button("✅ GÉNÉRER FACTURE"):
-                ref_f = choix_ref.replace("D", "F")
-                new_f = pd.DataFrame([d_info])
-                new_f["Ref"] = ref_f
-                new_f["Date"] = datetime.now().strftime("%d/%m/%Y")
+    try:
+        df_devis = conn.read(worksheet="devis", ttl=0)
+        if not df_devis.empty:
+            choix_ref = st.selectbox("Sélectionner Devis", [""] + df_devis["Ref"].tolist()[::-1])
+            if choix_ref:
+                d_info = df_devis[df_devis["Ref"] == choix_ref].iloc[0]
+                st.info(f"Devis: {choix_ref} | Client: {d_info['Client']} | Total: {d_info['Total']} €")
                 
-                save_to_gsheets(new_f, "factures")
-                
-                pdf_f = generate_thermal_ticket("Facture", {"Circuit": d_info['Circuit'], "Pax": d_info['Pax'], "Jours": "-", "Total": d_info['Total']}, d_info['Client'], ref_f, d_info['Options'])
-                st.download_button("📥 Télécharger Facture", pdf_f, f"{ref_f}.pdf", "application/pdf")
+                if st.button("✅ GÉNÉRER FACTURE"):
+                    ref_f = choix_ref.replace("D", "F")
+                    new_f = pd.DataFrame([d_info])
+                    new_f["Ref"] = ref_f
+                    new_f["Date"] = datetime.now().strftime("%d/%m/%Y")
+                    
+                    save_to_gsheets(new_f, "factures")
+                    
+                    pdf_f = generate_thermal_ticket("Facture", {"Circuit": d_info['Circuit'], "Pax": d_info['Pax'], "Jours": "-", "Total": d_info['Total']}, d_info['Client'], ref_f, d_info['Options'])
+                    st.download_button("📥 Télécharger Facture", pdf_f, f"{ref_f}.pdf", "application/pdf")
+        else:
+            st.warning("Aucun devis trouvé dans l'historique.")
+    except:
+        st.error("Impossible de lire la feuille 'devis'. Vérifiez le nom de l'onglet.")
 
 with tab3:
     st.subheader("📂 Historiques (Google Sheets)")
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("### 📒 Devis")
-        st.dataframe(conn.read(worksheet="devis", ttl=0), use_container_width=True)
+        try:
+            st.dataframe(conn.read(worksheet="devis", ttl=0), use_container_width=True)
+        except: st.info("La feuille 'devis' est vide ou inexistante.")
     with c2:
         st.markdown("### 📗 Factures")
-        st.dataframe(conn.read(worksheet="factures", ttl=0), use_container_width=True)
+        try:
+            st.dataframe(conn.read(worksheet="factures", ttl=0), use_container_width=True)
+        except: st.info("La feuille 'factures' est vide ou inexistante.")
