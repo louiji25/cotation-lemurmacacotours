@@ -33,48 +33,80 @@ def clean_text(text):
     for old, new in replacements.items(): text = text.replace(old, new)
     return text
 
-# --- GÉNÉRATION DU TICKET DÉTAILLÉ (FORMAT PDF) ---
-def generate_thermal_ticket(type_doc, data, client_name, ref, options_txt):
-    pdf = FPDF(format=(80, 280))
+# --- GÉNÉRATION PDF ---
+def generate_thermal_ticket(type_doc, data, client_name, ref, contact="", options_text=""):
+    pdf = FPDF(format=(80, 270))
     pdf.add_page()
     pdf.set_margins(4, 4, 4)
     
-    # En-tête Agence [cite: 3, 4]
+    if os.path.exists(LOGO_FILE):
+        pdf.image(LOGO_FILE, x=25, y=10, w=30)
+        pdf.ln(35)
+    
+    # Infos Agence (Centrées)
+    df_infos = get_info_df()
     pdf.set_font("Helvetica", 'B', 12)
-    pdf.cell(72, 8, "LEMUR MACACO TOURS", ln=True, align='C')
+    pdf.cell(72, 8, clean_text(str(df_infos.iloc[0]['Valeur'])), ln=True, align='C')
     pdf.set_font("Helvetica", '', 8)
-    pdf.cell(72, 4, "Nosy Be - Madagascar", ln=True, align='C')
-    pdf.cell(72, 4, "Contact: +261 32 00 000 00", ln=True, align='C')
-    pdf.ln(2); pdf.cell(72, 0, "-"*45, ln=True); pdf.ln(2)
+    for i in range(1, len(df_infos)):
+        pdf.cell(72, 4, clean_text(f"{df_infos.iloc[i]['Champ']}: {df_infos.iloc[i]['Valeur']}"), ln=True, align='C')
     
-    # Infos Document [cite: 5, 6, 7, 8]
+    pdf.ln(2)
+    pdf.cell(72, 0, "-"*45, ln=True, align='C')
+    pdf.ln(2)
+    
+    # Titre Document (Centré)
     pdf.set_font("Helvetica", 'B', 10)
-    pdf.cell(72, 6, type_doc.upper(), ln=True, align='C')
-    pdf.set_font("Helvetica", '', 8)
-    pdf.cell(72, 5, f"Date: {datetime.now().strftime('%d/%m/%y %H:%M')}", ln=True)
-    pdf.cell(72, 5, f"Ref: {clean_text(ref)}", ln=True)
-    pdf.cell(72, 5, f"Client: {clean_text(client_name)}", ln=True)
-    pdf.ln(2); pdf.cell(72, 0, "-"*45, ln=True); pdf.ln(2)
+    pdf.cell(72, 6, clean_text(type_doc.upper()), ln=True, align='C')
     
-    # Détails Circuit [cite: 9, 10, 11]
+    # Infos Client (Alignées à gauche)
+    pdf.set_font("Helvetica", '', 8)
+    pdf.set_x(4) # Force le retour à gauche
+    pdf.cell(72, 5, f"Date: {datetime.now().strftime('%d/%m/%y %H:%M')}", ln=True, align='L')
+    pdf.set_x(4)
+    pdf.cell(72, 5, f"Ref: {clean_text(ref)}", ln=True, align='L')
+    pdf.set_x(4)
+    pdf.cell(72, 5, f"Client: {clean_text(client_name)}", ln=True, align='L')
+    
+    pdf.ln(2)
+    pdf.cell(72, 0, "-"*45, ln=True, align='C')
+    pdf.ln(2)
+    
+    # Détails Circuit (Alignés à gauche)
     pdf.set_font("Helvetica", 'B', 9)
-    pdf.multi_cell(72, 5, clean_text(f"Circuit: {data['Circuit']}"))
+    pdf.set_x(4)
+    pdf.multi_cell(72, 5, clean_text(f"Circuit: {data.get('Circuit', 'N/A')}"), align='L')
+    
+    # LIGNE PAX CORRIGÉE
     pdf.set_font("Helvetica", '', 8)
-    pdf.cell(72, 5, f"Pax: {data['Pax']} | Jours: {data['Jours']}", ln=True, align='L')
-    pdf.ln(1)
-    pdf.set_font("Helvetica", 'I', 7)
-    pdf.multi_cell(72, 4, clean_text(f"Options: {options_txt}"))
+    pdf.set_x(4) # Assure que Pax commence bien à gauche
+    pdf.cell(72, 5, f"Pax: {data.get('Pax', 1)} | Jours: {data.get('Jours', 1)}", ln=True, align='L')
     
-    # Total [cite: 12, 13]
-    pdf.ln(3); pdf.set_font("Helvetica", 'B', 11)
-    pdf.cell(72, 8, f"TOTAL: {data['Total']:,.2f} EUR", ln=True, align='R')
+    # Options (Italique gauche)
+    if options_text:
+        pdf.set_x(4)
+        pdf.set_font("Helvetica", 'I', 7)
+        pdf.multi_cell(72, 4, clean_text(f"Options: {options_text}"), align='L')
+    
+    # Totaux (Alignés à droite)
+    pdf.ln(2)
+    pdf.set_font("Helvetica", 'B', 11)
+    total_eur = float(data.get('Total', 0))
+    pdf.cell(72, 8, f"TOTAL: {total_eur:,.2f} EUR", ln=True, align='R')
     pdf.set_text_color(230, 74, 25)
-    pdf.cell(72, 6, f"Soit: {data['Total'] * TAUX_AR_TO_EUR:,.0f} Ar", ln=True, align='R')
+    pdf.cell(72, 6, f"Soit: {total_eur * TAUX_AR_TO_EUR:,.0f} Ar", ln=True, align='R')
     
-    pdf.set_text_color(0, 0, 0); pdf.ln(5); pdf.set_font("Helvetica", 'I', 8)
-    pdf.cell(72, 5, "Merci de votre confiance!", ln=True, align='C') # [cite: 14]
+    # Pied de page
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(5)
+    pdf.set_font("Helvetica", 'I', 8)
+    pdf.cell(72, 5, "Merci de votre confiance !", ln=True, align='C')
     
-    return bytes(pdf.output())
+    # Gestion du retour selon la version de FPDF2
+    output = pdf.output()
+    if isinstance(output, str):
+        return output.encode('latin-1', 'replace')
+    return bytes(output)
 
 # =========================
 # INTERFACE
@@ -165,4 +197,5 @@ if os.path.exists(DATA_FILE):
                                    mime="application/pdf")
 else:
     st.error("data.csv manquant.")
+
 
