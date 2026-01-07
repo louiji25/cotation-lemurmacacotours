@@ -14,7 +14,7 @@ TAUX_AR_TO_EUR = 5000
 # Connexion Google Sheets
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Colonnes standards
+# Colonnes standards pour initialisation
 COLONNES = ["Date", "Ref", "Client", "Circuit", "Formule", "Pax", "Total", "Options"]
 
 # --- STYLE CSS ---
@@ -30,17 +30,25 @@ st.markdown("""
 DATA_FILE = "data.csv"
 LOGO_FILE = "logo.png"
 
-# --- FONCTIONS DE SAUVEGARDE CLOUD ---
-def save_to_gsheets(new_row, worksheet_name):
-    """Ajoute une ligne à la Google Sheet et rafraîchit la connexion"""
+# --- FONCTIONS DE CACHE & SAUVEGARDE ---
+@st.cache_data(ttl=600)  # Garde les données en mémoire 10 min pour la vitesse
+def get_cached_data(worksheet_name):
     try:
+        return conn.read(worksheet=worksheet_name, ttl=0)
+    except:
+        return pd.DataFrame(columns=COLONNES)
+
+def save_to_gsheets(new_row, worksheet_name):
+    """Ajoute une ligne et force la mise à jour du cache"""
+    try:
+        # On lit la version en ligne sans cache pour ne pas écraser de données
         existing_data = conn.read(worksheet=worksheet_name, ttl=0)
     except:
         existing_data = pd.DataFrame(columns=COLONNES)
     
     updated_df = pd.concat([existing_data, new_row], ignore_index=True)
     conn.update(worksheet=worksheet_name, data=updated_df)
-    st.cache_data.clear() 
+    st.cache_data.clear() # On vide le cache pour forcer l'actualisation
 
 # --- FONCTIONS UTILES ---
 def clean_text(text):
@@ -71,27 +79,27 @@ def generate_thermal_ticket(type_doc, data, client_name, ref, options_txt):
     pdf.cell(72, 5, "LEMUR MACACO TOURS", ln=True, align='C')
     pdf.set_font("Helvetica", '', 7)
     pdf.cell(72, 4, "Andrekareka - Hell Ville - Nosy Be - Madagascar", ln=True, align='C')
-    pdf.cell(72, 4, "Contact: +261 32 26 393 88 / 34 29 010 65", ln=True, align='C')
+    pdf.cell(72, 4, "Contact: +261 32 26 393 88", ln=True, align='C')
     pdf.cell(72, 4, "NIF: 4019433197 | STAT: 79120 71 2025 0 10965", ln=True, align='C')
     pdf.ln(2); pdf.cell(72, 0, "-"*45, ln=True, align='C'); pdf.ln(2)
     
     pdf.set_font("Helvetica", 'B', 10)
     pdf.cell(72, 6, type_doc.upper(), ln=True, align='C')
     
-    pdf.set_font("Helvetica", '', 8); pdf.set_x(4)
-    pdf.cell(72, 5, f"Date: {datetime.now().strftime('%d/%m/%y %H:%M')}", ln=True, align='L')
-    pdf.set_x(4); pdf.cell(72, 5, f"Ref: {clean_text(ref)}", ln=True, align='L')
-    pdf.set_x(4); pdf.cell(72, 5, f"Client: {clean_text(client_name)}", ln=True, align='L')
+    pdf.set_font("Helvetica", '', 8)
+    pdf.cell(72, 5, f"Date: {datetime.now().strftime('%d/%m/%y %H:%M')}", ln=True)
+    pdf.cell(72, 5, f"Ref: {clean_text(ref)}", ln=True)
+    pdf.cell(72, 5, f"Client: {clean_text(client_name)}", ln=True)
     pdf.ln(2); pdf.cell(72, 0, "-"*45, ln=True, align='C'); pdf.ln(2)
     
-    pdf.set_font("Helvetica", 'B', 9); pdf.set_x(4)
-    pdf.multi_cell(72, 5, clean_text(f"Circuit: {data['Circuit']}"), align='L')
+    pdf.set_font("Helvetica", 'B', 9)
+    pdf.multi_cell(72, 5, clean_text(f"Circuit: {data['Circuit']}"))
     
-    pdf.set_font("Helvetica", '', 8); pdf.set_x(4)
-    pdf.cell(72, 5, f"Pax: {data['Pax']} | Jours: {data['Jours']}", ln=True, align='L')
+    pdf.set_font("Helvetica", '', 8)
+    pdf.cell(72, 5, f"Pax: {data['Pax']} | Jours: {data['Jours']}", ln=True)
     
-    pdf.ln(1); pdf.set_font("Helvetica", 'I', 7); pdf.set_x(4)
-    pdf.multi_cell(72, 4, clean_text(f"Options: {options_txt}"), align='L')
+    pdf.ln(1); pdf.set_font("Helvetica", 'I', 7)
+    pdf.multi_cell(72, 4, clean_text(f"Options: {options_txt}"))
     
     pdf.ln(3); pdf.set_font("Helvetica", 'B', 11)
     pdf.cell(72, 8, f"TOTAL: {data['Total']:,.2f} EUR", ln=True, align='R')
@@ -100,12 +108,10 @@ def generate_thermal_ticket(type_doc, data, client_name, ref, options_txt):
     
     pdf.set_text_color(0, 0, 0)
     pdf.ln(4); pdf.cell(72, 0, "-"*45, ln=True, align='C'); pdf.ln(2)
-    pdf.set_font("Helvetica", 'B', 8)
-    pdf.cell(72, 4, "COORDONNEES BANCAIRES :", ln=True, align='L')
     pdf.set_font("Helvetica", 'B', 7)
-    pdf.cell(72, 4, "BANQUE BMOI MADAGASCAR", ln=True, align='L')
-    pdf.set_font("Helvetica", '', 6.5)
-    pdf.multi_cell(72, 3.5, "IBAN: MG46 0000 8005 8005 0030 2127 424\nBIC: BFAVMGMG", align='L')
+    pdf.cell(72, 4, "COORDONNEES BANCAIRES : BMOI", ln=True)
+    pdf.set_font("Helvetica", '', 6)
+    pdf.multi_cell(72, 3, "IBAN: MG46 0000 8005 8005 0030 2127 424\nBIC: BFAVMGMG")
     
     pdf.ln(4); pdf.set_font("Helvetica", 'I', 8)
     pdf.cell(72, 5, "Merci de votre confiance!", ln=True, align='C')
@@ -149,7 +155,7 @@ with tab1:
             col_o1, col_o2, col_o3 = st.columns(3)
             with col_o1:
                 st.markdown("**🏞️ SITES**")
-                sites = {"Montagne d'Ambre": 55000, "Tsingy Rouge": 35000, "Ankarana": 65000, "Trois Baies": 10000, "Montagne des Français": 30000, "Daraina": 60000, "Marojejy": 140000}
+                sites = {"Montagne d'Ambre": 55000, "Tsingy Rouge": 35000, "Ankarana": 65000, "Trois Baies": 10000, "Montagne des Français": 30000}
                 for s, p in sites.items():
                     if st.checkbox(s): supp_ar += p; opts_list.append(s)
             with col_o2:
@@ -159,7 +165,7 @@ with tab1:
                     if st.checkbox(s): supp_ar += (p * nb_jours); opts_list.append(f"{s}({nb_jours}j)")
             with col_o3:
                 st.markdown("**🚚 LOGISTIQUE**")
-                logis = {"Location voiture": 300000, "Carburant": 1200000, "Transfert hotel": 200000, "Ankify -> Nosy Be": 500000}
+                logis = {"Location voiture": 300000, "Carburant": 1200000, "Transfert hotel": 200000}
                 for l, v in logis.items():
                     if st.checkbox(l): 
                         supp_ar += (v * nb_jours) if "Location" in l else v
@@ -179,11 +185,7 @@ with tab1:
 
             if st.button("🔥 GÉNÉRER LE DEVIS"):
                 if nom_c:
-                    try:
-                        df_h = conn.read(worksheet="devis", ttl=0)
-                    except:
-                        df_h = pd.DataFrame(columns=COLONNES)
-                        
+                    df_h = get_cached_data("devis")
                     ref = f"D{len(df_h)+1:04d}-{nom_c.upper()}"
                     all_opts = f"Transp: {transport}, " + ", ".join(opts_list)
                     
@@ -195,46 +197,41 @@ with tab1:
                     }])
                     
                     save_to_gsheets(new_data, "devis")
-                    
                     pdf_bytes = generate_thermal_ticket("Devis", {"Circuit": circuit, "Pax": nb_pax, "Jours": nb_jours, "Total": total_eur}, nom_c, ref, all_opts)
                     st.download_button("📥 Télécharger PDF", pdf_bytes, f"{ref}.pdf", "application/pdf")
                 else: st.error("Nom du client requis.")
 
 with tab2:
     st.subheader("🧾 Conversion Devis -> Facture")
-    try:
-        df_devis = conn.read(worksheet="devis", ttl=0)
-        if not df_devis.empty:
-            choix_ref = st.selectbox("Sélectionner Devis", [""] + df_devis["Ref"].tolist()[::-1])
-            if choix_ref:
-                d_info = df_devis[df_devis["Ref"] == choix_ref].iloc[0]
-                st.info(f"Devis: {choix_ref} | Client: {d_info['Client']} | Total: {d_info['Total']} €")
+    df_devis = get_cached_data("devis")
+    if not df_devis.empty:
+        choix_ref = st.selectbox("Sélectionner Devis", [""] + df_devis["Ref"].tolist()[::-1])
+        if choix_ref:
+            d_info = df_devis[df_devis["Ref"] == choix_ref].iloc[0]
+            st.info(f"Devis: {choix_ref} | Client: {d_info['Client']} | Total: {d_info['Total']} €")
+            
+            if st.button("✅ GÉNÉRER FACTURE"):
+                ref_f = choix_ref.replace("D", "F")
+                new_f = pd.DataFrame([d_info])
+                new_f["Ref"] = ref_f
+                new_f["Date"] = datetime.now().strftime("%d/%m/%Y")
                 
-                if st.button("✅ GÉNÉRER FACTURE"):
-                    ref_f = choix_ref.replace("D", "F")
-                    new_f = pd.DataFrame([d_info])
-                    new_f["Ref"] = ref_f
-                    new_f["Date"] = datetime.now().strftime("%d/%m/%Y")
-                    
-                    save_to_gsheets(new_f, "factures")
-                    
-                    pdf_f = generate_thermal_ticket("Facture", {"Circuit": d_info['Circuit'], "Pax": d_info['Pax'], "Jours": "-", "Total": d_info['Total']}, d_info['Client'], ref_f, d_info['Options'])
-                    st.download_button("📥 Télécharger Facture", pdf_f, f"{ref_f}.pdf", "application/pdf")
-        else:
-            st.warning("Aucun devis trouvé dans l'historique.")
-    except:
-        st.error("Impossible de lire la feuille 'devis'. Vérifiez le nom de l'onglet.")
+                save_to_gsheets(new_f, "factures")
+                pdf_f = generate_thermal_ticket("Facture", {"Circuit": d_info['Circuit'], "Pax": d_info['Pax'], "Jours": "-", "Total": d_info['Total']}, d_info['Client'], ref_f, d_info['Options'])
+                st.download_button("📥 Télécharger Facture", pdf_f, f"{ref_f}.pdf", "application/pdf")
+    else:
+        st.info("Aucun devis trouvé.")
 
 with tab3:
-    st.subheader("📂 Historiques (Google Sheets)")
+    st.subheader("📂 Historiques")
+    if st.button("🔄 Actualiser les données"):
+        st.cache_data.clear()
+        st.rerun()
+        
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("### 📒 Devis")
-        try:
-            st.dataframe(conn.read(worksheet="devis", ttl=0), use_container_width=True)
-        except: st.info("La feuille 'devis' est vide ou inexistante.")
+        st.dataframe(get_cached_data("devis"), use_container_width=True)
     with c2:
         st.markdown("### 📗 Factures")
-        try:
-            st.dataframe(conn.read(worksheet="factures", ttl=0), use_container_width=True)
-        except: st.info("La feuille 'factures' est vide ou inexistante.")
+        st.dataframe(get_cached_data("factures"), use_container_width=True)
