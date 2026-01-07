@@ -14,7 +14,7 @@ TAUX_AR_TO_EUR = 5000
 st.markdown("""
     <style>
     .stButton>button { width: 100%; height: 3.5em; font-size: 16px !important; border-radius: 10px; margin-top: 10px; }
-    iframe { border-radius: 10px; border: 1px solid #ddd; background-color: white; }
+    .pdf-container { border-radius: 10px; border: 2px solid #ddd; background-color: #fafafa; padding: 10px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -23,14 +23,14 @@ INFO_FILE = "infos.csv"
 DATA_FILE = "data.csv"
 LOGO_FILE = "logo.png"
 
-# --- FONCTION DE RÉINITIALISATION ---
+# --- RÉINITIALISATION ---
 def reset_formulaire():
     keys_to_reset = ["nom_c", "cont_c", "type_e", "formule", "transport", "circuit", "pax", "jours", "marge"]
     for key in keys_to_reset:
         if key in st.session_state:
             st.session_state[key] = "" if any(x in key for x in ["nom", "cont", "type"]) else 1
 
-# --- NETTOYAGE CARACTÈRES PDF ---
+# --- NETTOYAGE TEXTE ---
 def clean_text(text):
     if not isinstance(text, str): return str(text)
     replacements = {
@@ -52,7 +52,7 @@ def get_info_df():
     if os.path.exists(INFO_FILE): return pd.read_csv(INFO_FILE, encoding='utf-8-sig')
     return pd.DataFrame([["Nom", "LAKA AM'LAY"], ["Contact", "+261 34 00 000 00"]], columns=['Champ', 'Valeur'])
 
-# --- GÉNÉRATION PDF (CORRIGÉE) ---
+# --- GÉNÉRATION PDF ---
 def generate_thermal_ticket(type_doc, data, client_name, ref, contact="", options_text=""):
     pdf = FPDF(format=(80, 270))
     pdf.add_page(); pdf.set_margins(4, 4, 4)
@@ -89,12 +89,16 @@ def generate_thermal_ticket(type_doc, data, client_name, ref, contact="", option
     pdf.set_text_color(0, 0, 0); pdf.ln(5); pdf.set_font("Helvetica", 'I', 8)
     pdf.cell(72, 5, "Merci de votre confiance !", ln=True, align='C')
     
-    # --- LOGIQUE DE SORTIE SÉCURISÉE ---
     raw_output = pdf.output(dest='S')
-    if isinstance(raw_output, str):
-        # Si c'est un string, on l'encode en latin-1
-        return raw_output.encode('latin-1', 'replace')
-    return raw_output # Si c'est déjà des bytes, on renvoie tel quel
+    return raw_output.encode('latin-1', 'replace') if isinstance(raw_output, str) else raw_output
+
+# --- FONCTION D'AFFICHAGE PDF (AMÉLIORÉE) ---
+def show_pdf(pdf_bytes, file_name):
+    base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+    # Utilisation d'un objet embed pour une meilleure compatibilité mobile/PC
+    pdf_display = f'<embed src="data:application/pdf;base64,{base64_pdf}" width="100%" height="500" type="application/pdf">'
+    st.markdown(pdf_display, unsafe_allow_html=True)
+    st.download_button(label="📥 Télécharger le PDF", data=pdf_bytes, file_name=f"{file_name}.pdf", mime="application/pdf")
 
 # =========================
 # INTERFACE
@@ -119,48 +123,39 @@ with tab1:
             circuit = st.selectbox("📍 Circuit", list_circuits, key="circuit")
             
             selected_rows = df_f[df_f["Circuit"] == circuit]
-            
             if not selected_rows.empty:
                 row = selected_rows.iloc[0]
-                prix_base = float(row['Prix'])
-                
                 c1, c2 = st.columns(2)
                 nb_pax = c1.number_input("👥 Pax", min_value=1, value=1, key="pax")
-                nb_jours = c2.number_input("📅 Nombre de jours", min_value=1, value=1, key="jours")
+                nb_jours = c2.number_input("📅 Jours", min_value=1, value=1, key="jours")
                 
                 supp_ar = 0.0
                 opts_list = [f"Transp: {transport}"]
 
                 if type_e == "Tours Nord":
                     st.markdown("### 🛠️ Options détaillées")
-                    with st.expander("🏞️ Frais d'entrée (Ar)", expanded=True):
-                        col_s1, col_s2 = st.columns(2)
-                        sites = {"Montagne des Français": 30000, "Trois Baies": 10000, "Montagne d'Ambre": 55000, "Tsingy Rouge": 35000, "Ankarana": 65000, "Daraina": 60000, "Marojejy": 140000}
-                        for i, (site, prix) in enumerate(sites.items()):
-                            target_col = col_s1 if i % 2 == 0 else col_s2
-                            if target_col.checkbox(f"{site} ({prix:,} Ar)"):
+                    with st.expander("🏞️ Sites & Personnel", expanded=True):
+                        sites = {"Montagne des Français": 30000, "Trois Baies": 10000, "Montagne d'Ambre": 55000, "Tsingy Rouge": 35000, "Ankarana": 65000, "Daraina": 60000}
+                        for site, prix in sites.items():
+                            if st.checkbox(f"{site} ({prix:,} Ar)"):
                                 supp_ar += prix; opts_list.append(site)
+                        
+                        servs = {"Guide": 100000, "Cuisinier": 30000, "Voiture": 300000}
+                        for serv, prix in servs.items():
+                            if st.checkbox(f"{serv} ({prix:,} Ar/j)"):
+                                supp_ar += (prix * nb_jours); opts_list.append(serv)
 
-                    with st.expander("👥 Personnel & Services (Ar/j)", expanded=True):
-                        col_p1, col_p2 = st.columns(2)
-                        servs = {"Guide": 100000, "Cuisinier": 30000, "Porteur": 100000, "Location voiture": 300000}
-                        for i, (serv, prix) in enumerate(servs.items()):
-                            target_col = col_p1 if i % 2 == 0 else col_p2
-                            if target_col.checkbox(f"{serv} ({prix:,} Ar/j)"):
-                                supp_ar += (prix * nb_jours); opts_list.append(f"{serv} ({nb_jours}j)")
-
-                    with st.expander("🚚 Transport & Logistique (Ar)", expanded=True):
-                        logis = {"Ankify -> Nosy Be": 500000, "Transfert hôtel": 200000, "Carburant": 1200000}
-                        cols_l = st.columns(3)
-                        for i, (item, prix) in enumerate(logis.items()):
-                            if cols_l[i].checkbox(item):
-                                supp_ar += prix; opts_list.append(item)
+                    with st.expander("🚚 Logistique", expanded=False):
+                        if st.checkbox("Ankify -> Nosy Be (500k Ar)"):
+                            supp_ar += 500000; opts_list.append("Transfert Mer")
+                        if st.checkbox("Carburant (1.2M Ar)"):
+                            supp_ar += 1200000; opts_list.append("Carburant")
                 
                 marge = st.slider("📈 Marge %", 0, 100, 20, key="marge")
-                total_ttc_eur = ((prix_base + (supp_ar/TAUX_AR_TO_EUR)) * nb_pax) * (1 + marge/100)
+                total_ttc_eur = ((float(row['Prix']) + (supp_ar/TAUX_AR_TO_EUR)) * nb_pax) * (1 + marge/100)
                 
                 st.divider()
-                st.markdown(f"### Total: {total_ttc_eur:,.2f} € / {total_ttc_eur*TAUX_AR_TO_EUR:,.0f} Ar")
+                st.metric("Total à payer", f"{total_ttc_eur:,.2f} €", f"{total_ttc_eur*TAUX_AR_TO_EUR:,.0f} Ar")
 
                 if st.button("🔥 GENERER LE TICKET"):
                     if not nom_c: st.error("Nom requis")
@@ -172,13 +167,14 @@ with tab1:
                         st.session_state.df_h.to_csv(HIST_FILE, index=False, encoding='utf-8-sig')
                         
                         pdf_bytes = generate_thermal_ticket("Devis", new_row, nom_c, ref_d, cont_c, opts_txt)
-                        b64 = base64.b64encode(pdf_bytes).decode('utf-8')
-                        st.markdown(f'<iframe src="data:application/pdf;base64,{b64}" width="100%" height="450"></iframe>', unsafe_allow_html=True)
+                        st.session_state.current_pdf = pdf_bytes
+                        st.session_state.current_ref = ref_d
+
+                if 'current_pdf' in st.session_state:
+                    show_pdf(st.session_state.current_pdf, st.session_state.current_ref)
                 
                 st.button("➕ NOUVEAU DEVIS", on_click=reset_formulaire)
-    else: st.error("data.csv manquant.")
 
-# --- ONGLETS FACTURE ET CONFIG ---
 with tab2:
     st.subheader("🧾 Conversion Facture")
     if not st.session_state.df_h.empty:
@@ -186,9 +182,9 @@ with tab2:
         if choix:
             d = st.session_state.df_h[st.session_state.df_h['Ref'] == choix].iloc[0]
             if st.button("📄 GENERER FACTURE"):
-                pdf_f = generate_thermal_ticket("Facture", d.to_dict(), d['Client'], choix.replace("D", "F"), d['Contact'], d['Options'])
-                b64_f = base64.b64encode(pdf_f).decode('utf-8')
-                st.markdown(f'<iframe src="data:application/pdf;base64,{b64_f}" width="100%" height="450"></iframe>', unsafe_allow_html=True)
+                ref_f = choix.replace("D", "F")
+                pdf_f = generate_thermal_ticket("Facture", d.to_dict(), d['Client'], ref_f, d['Contact'], d['Options'])
+                show_pdf(pdf_f, ref_f)
 
 with tab3:
     st.subheader("⚙️ Config Agence")
