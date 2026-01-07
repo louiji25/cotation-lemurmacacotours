@@ -132,17 +132,34 @@ with tab1:
             col_o1, col_o2, col_o3 = st.columns(3)
             with col_o1:
                 st.markdown("**🏞️ SITES**")
-                sites = {"Montagne d'Ambre": 55000, "Tsingy Rouge": 35000, "Ankarana": 65000, "Trois Baies": 10000, "Montagne des Français": 30000, "Daraina": 60000}
+                sites = {
+                    "Montagne d'Ambre": 55000, 
+                    "Tsingy Rouge": 35000, 
+                    "Ankarana": 65000, 
+                    "Trois Baies": 10000, 
+                    "Montagne des Français": 30000, 
+                    "Daraina": 60000
+                }
                 for s, p in sites.items():
                     if st.checkbox(s): supp_ar += p; opts_list.append(s)
             with col_o2:
                 st.markdown("**👥 PERSONNEL**")
-                persos = {"Guide": 100000, "Cuisinier": 30000, "Porteur": 20000}
+                persos = {
+                    "Guide": 100000, 
+                    "Cuisinier": 30000, 
+                    "Porteur": 20000
+                }
                 for s, p in persos.items():
                     if st.checkbox(s): supp_ar += (p * nb_jours); opts_list.append(f"{s}({nb_jours}j)")
             with col_o3:
                 st.markdown("**🚚 LOGISTIQUE**")
-                logis = {"Location 4x4": 300000, "Location voiture": 250000, "Carburant": 1200000, "Transfert hotel": 200000, "Ankify -> Nosy Be": 500000}
+                logis = {
+                    "Location 4x4": 300000, 
+                    "Location voiture": 250000, 
+                    "Carburant": 1200000, 
+                    "Transfert hotel": 200000, 
+                    "Ankify -> Nosy Be": 500000
+                }
                 for l, v in logis.items():
                     if st.checkbox(l): 
                         supp_ar += (v * nb_jours) if "Location" in l else v
@@ -208,3 +225,4 @@ with tab3:
     with c2:
         st.markdown("### 📗 Factures")
         st.dataframe(pd.read_csv(HIST_FACTURES), use_container_width=True)
+
