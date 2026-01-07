@@ -43,7 +43,8 @@ def clean_text(text):
 # --- INITIALISATION ---
 if 'df_h' not in st.session_state:
     if os.path.exists(HIST_FILE):
-        st.session_state.df_h = pd.read_csv(HIST_FILE, encoding='utf-8-sig')
+        try: st.session_state.df_h = pd.read_csv(HIST_FILE, encoding='utf-8-sig')
+        except: st.session_state.df_h = pd.DataFrame(columns=["Date", "Ref", "Client", "Contact", "Circuit", "Pax", "Jours", "Total", "Formule", "Options"])
     else:
         st.session_state.df_h = pd.DataFrame(columns=["Date", "Ref", "Client", "Contact", "Circuit", "Pax", "Jours", "Total", "Formule", "Options"])
 
@@ -51,7 +52,7 @@ def get_info_df():
     if os.path.exists(INFO_FILE): return pd.read_csv(INFO_FILE, encoding='utf-8-sig')
     return pd.DataFrame([["Nom", "LAKA AM'LAY"], ["Contact", "+261 34 00 000 00"]], columns=['Champ', 'Valeur'])
 
-# --- GÉNÉRATION PDF ---
+# --- GÉNÉRATION PDF (CORRIGÉE) ---
 def generate_thermal_ticket(type_doc, data, client_name, ref, contact="", options_text=""):
     pdf = FPDF(format=(80, 270))
     pdf.add_page(); pdf.set_margins(4, 4, 4)
@@ -87,7 +88,13 @@ def generate_thermal_ticket(type_doc, data, client_name, ref, contact="", option
     
     pdf.set_text_color(0, 0, 0); pdf.ln(5); pdf.set_font("Helvetica", 'I', 8)
     pdf.cell(72, 5, "Merci de votre confiance !", ln=True, align='C')
-    return pdf.output(dest='S').encode('latin-1', 'replace')
+    
+    # --- LOGIQUE DE SORTIE SÉCURISÉE ---
+    raw_output = pdf.output(dest='S')
+    if isinstance(raw_output, str):
+        # Si c'est un string, on l'encode en latin-1
+        return raw_output.encode('latin-1', 'replace')
+    return raw_output # Si c'est déjà des bytes, on renvoie tel quel
 
 # =========================
 # INTERFACE
@@ -111,7 +118,6 @@ with tab1:
             list_circuits = sorted(df_f[(df_f["Formule"] == formule) & (df_f["Transport"] == transport)]["Circuit"].unique().tolist())
             circuit = st.selectbox("📍 Circuit", list_circuits, key="circuit")
             
-            # --- CORRECTION DE L'ERREUR INDEX ---
             selected_rows = df_f[df_f["Circuit"] == circuit]
             
             if not selected_rows.empty:
@@ -154,12 +160,7 @@ with tab1:
                 total_ttc_eur = ((prix_base + (supp_ar/TAUX_AR_TO_EUR)) * nb_pax) * (1 + marge/100)
                 
                 st.divider()
-                st.markdown(f"""
-                    <div style="display: flex; justify-content: space-between; align-items: center; background-color: #f0f2f6; padding: 20px; border-radius: 10px; border-left: 5px solid #1e88e5;">
-                        <div><p style="margin: 0; font-size: 14px; color: #555;">TOTAL (EUR)</p><h2 style="margin: 0; color: #1e88e5;">{total_ttc_eur:,.2f} €</h2></div>
-                        <div style="text-align: right;"><p style="margin: 0; font-size: 14px; color: #555;">TOTAL (ARIARY)</p><h2 style="margin: 0; color: #e64a19;">{total_ttc_eur*TAUX_AR_TO_EUR:,.0f} Ar</h2></div>
-                    </div>
-                """, unsafe_allow_html=True)
+                st.markdown(f"### Total: {total_ttc_eur:,.2f} € / {total_ttc_eur*TAUX_AR_TO_EUR:,.0f} Ar")
 
                 if st.button("🔥 GENERER LE TICKET"):
                     if not nom_c: st.error("Nom requis")
@@ -169,16 +170,15 @@ with tab1:
                         new_row = {"Date": datetime.now().strftime("%Y-%m-%d"), "Ref": ref_d, "Client": nom_c, "Contact": cont_c, "Circuit": circuit, "Pax": nb_pax, "Jours": nb_jours, "Total": round(total_ttc_eur, 2), "Formule": formule, "Options": opts_txt}
                         st.session_state.df_h = pd.concat([st.session_state.df_h, pd.DataFrame([new_row])], ignore_index=True)
                         st.session_state.df_h.to_csv(HIST_FILE, index=False, encoding='utf-8-sig')
+                        
                         pdf_bytes = generate_thermal_ticket("Devis", new_row, nom_c, ref_d, cont_c, opts_txt)
-                        st.markdown(f'<iframe src="data:application/pdf;base64,{base64.b64encode(pdf_bytes).decode("utf-8")}" width="100%" height="450"></iframe>', unsafe_allow_html=True)
+                        b64 = base64.b64encode(pdf_bytes).decode('utf-8')
+                        st.markdown(f'<iframe src="data:application/pdf;base64,{b64}" width="100%" height="450"></iframe>', unsafe_allow_html=True)
                 
                 st.button("➕ NOUVEAU DEVIS", on_click=reset_formulaire)
-            else:
-                st.warning("Aucun circuit trouvé pour cette sélection.")
-
     else: st.error("data.csv manquant.")
 
-# --- ONGLETS FACTURE ET CONFIG (Inchangés) ---
+# --- ONGLETS FACTURE ET CONFIG ---
 with tab2:
     st.subheader("🧾 Conversion Facture")
     if not st.session_state.df_h.empty:
@@ -187,14 +187,11 @@ with tab2:
             d = st.session_state.df_h[st.session_state.df_h['Ref'] == choix].iloc[0]
             if st.button("📄 GENERER FACTURE"):
                 pdf_f = generate_thermal_ticket("Facture", d.to_dict(), d['Client'], choix.replace("D", "F"), d['Contact'], d['Options'])
-                st.markdown(f'<iframe src="data:application/pdf;base64,{base64.b64encode(pdf_f).decode("utf-8")}" width="100%" height="450"></iframe>', unsafe_allow_html=True)
+                b64_f = base64.b64encode(pdf_f).decode('utf-8')
+                st.markdown(f'<iframe src="data:application/pdf;base64,{b64_f}" width="100%" height="450"></iframe>', unsafe_allow_html=True)
 
 with tab3:
     st.subheader("⚙️ Config Agence")
     df_i = get_info_df()
     new_i = st.data_editor(df_i, num_rows="dynamic", use_container_width=True)
     if st.button("💾 Sauver"): new_i.to_csv(INFO_FILE, index=False, encoding='utf-8-sig')
-    if st.button("🗑️ Vider Historique"):
-        if os.path.exists(HIST_FILE): os.remove(HIST_FILE)
-        st.session_state.df_h = pd.DataFrame(columns=["Date", "Ref", "Client", "Contact", "Circuit", "Pax", "Jours", "Total", "Formule", "Options"])
-        st.rerun()
